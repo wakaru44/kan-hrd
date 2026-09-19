@@ -18,7 +18,8 @@
       `definition` nodes resolve `linkReference` / `imageReference`;
       frontmatter nodes drop; unknown node kinds degrade to their text
       rather than disappearing.
-- [x] 2.3 Link policy in the normalizer: scheme allowlist over a
+- [x] 2.3 Link policy in `markdown/markdown-links.ts`, applied by the
+      normalizer: scheme allowlist over a
       whitespace- and control-stripped probe; `http`/`https` external with
       `target` + `rel`; no scheme → checkout path resolved against the open
       file's directory, rejected if it escapes the root; everything else

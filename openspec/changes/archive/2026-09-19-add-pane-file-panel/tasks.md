@@ -8,8 +8,8 @@
       `repo.tree`, `file.read` and `repo.diff`. Each call returns a
       discriminated `ok` / `code` + `message` result — no throw reaches a
       component.
-- [x] 1.3 The service exposes the host's `repoFiles` capability, and a
-      `supported(host)` the toggle gates on.
+- [x] 1.3 The service exposes the host's `repoFiles` capability as
+      `capability(host)`, which the toggle gates on.
 - [x] 1.4 Status polling at `statusPollIntervalMs`, started and stopped by
       the panel, never running while collapsed.
 
@@ -21,8 +21,8 @@
       `repo.tree`, expansion kept, truncation stated, git letter + colour.
 - [x] 2.3 `pane-detail/file-view.{ts,html,scss}` — `source` / `diff` /
       `rendered`; binary, too-large, not-found and truncated-diff states.
-- [x] 2.4 `pane-detail/markdown-blocks.ts` — ported from the mock, rendered
-      to data, never `innerHTML`.
+- [x] 2.4 `pane-detail/markdown/**` — the remark pipeline, rendered to data,
+      never `innerHTML`.
 - [x] 2.5 `pane-detail/file-panel-split.ts` — clamp, defaults, per-axis
       load/save, `SIDE_BY_SIDE_MIN_PX`; pure and unit-tested.
 

@@ -13,7 +13,9 @@
 - [x] 2.1 Replace the single three-method assertion with one named case per
       method under `a read never writes the repository`.
 - [x] 2.2 Spring the trap deterministically: set the tracked file's mtime
-      forward rather than rewriting it, so it sits outside git's racy window.
+      forward rather than rewriting it, and restore the index git's `commit`
+      left behind before each assertion — git refreshes a stale stat at most
+      once, so without the restore one write blinds every later assertion.
 - [x] 2.3 Add the behaviour case: a tracked file saved without an edit is
       `unchanged` with an empty diff.
 - [x] 2.4 Verify the suite fails on the old code and names `repo.diff`.
