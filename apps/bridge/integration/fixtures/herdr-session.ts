@@ -23,10 +23,13 @@ import { dirname, join, resolve } from 'node:path';
  *   deleted session kanhrd-test-probe1
  *   # ~/.config/herdr/sessions/ is empty afterwards; `session list` shows only `default`
  *
- * A fresh named session starts with **zero** workspaces, tabs and panes, so
- * a suite that needs any must seed them (`seedSession()`), and a suite's
- * assertions can therefore be about panes it created rather than about
- * whatever the operator happened to leave open.
+ * A fresh named session is not empty: herdr auto-creates workspace `w1`,
+ * whose root pane `w1:p1` is cwd'd at the directory the server was launched
+ * from. It holds nothing else, so a suite that needs panes must seed them
+ * (`seedSession()`) and must address them by the ids seeding returned —
+ * `w1:p1` sorts ahead of every seeded pane, and it is in no checkout of
+ * ours. What isolation buys is that these are panes the suite created,
+ * rather than whatever the operator happened to leave open.
  */
 
 /**

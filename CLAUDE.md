@@ -129,8 +129,11 @@ This is enforced, not aspired to; `add-test-herdr-isolation` shipped it in
 itself:
 
 - each run starts its own headless session — `herdr --session
-kanhrd-test-<scope> server` — and seeds it, because a fresh named
-  session has **zero** workspaces, tabs and panes;
+kanhrd-test-<scope> server` — and seeds the workspace, tabs and panes it
+  needs. A fresh named session is **not** empty: herdr auto-creates `w1`,
+  whose root pane `w1:p1` is cwd'd at the server's launch directory. A
+  seeded pane therefore lands after it, so a suite selects its panes by the
+  ids the launcher handed it, never as "the first card on the board";
 - the bridge is started with a generated `--config` naming that session's
   socket, never the built-in default;
 - teardown stops and deletes the session, and the next run sweeps any

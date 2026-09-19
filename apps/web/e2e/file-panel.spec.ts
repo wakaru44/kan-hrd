@@ -11,7 +11,7 @@
  * the panel, not in the test.
  */
 import { test, expect } from './fixtures/kanhrd';
-import { herdrAvailable } from './fixtures/herdr';
+import { herdrAvailable, seededWorld } from './fixtures/herdr';
 import { xtermElement } from './helpers/selectors';
 
 let preflightReason: string | undefined;
@@ -25,9 +25,22 @@ test.beforeEach(() => {
   test.skip(!!preflightReason, `herdr pre-flight failed: ${preflightReason}`);
 });
 
-/** Opens the first card's pane detail and waits for the terminal to be live. */
+/**
+ * Opens the SEEDED pane's detail and waits for the terminal to be live.
+ *
+ * Not `a.card-open.first()`: a freshly created named herdr session is not
+ * empty — it already holds `w1:p1`, cwd'd at the server's launch directory
+ * and in no checkout of ours. The launcher's own workspace lands after it,
+ * so the first card on the board is the wrong pane and the panel correctly
+ * reports no repository. This suite is the only live one that depends on a
+ * pane's cwd, which is why it was the only one to notice.
+ */
 async function openPane(app: import('@playwright/test').Page) {
-  await app.locator('a.card-open').first().click();
+  const paneId = seededWorld().paneIds[0];
+  await app
+    .locator(`a.card-open[href$="/${paneId}"], a.card-open[href$="/${encodeURIComponent(paneId)}"]`)
+    .first()
+    .click();
   await expect(xtermElement(app)).toBeVisible({ timeout: 10_000 });
   await expect(app.locator('.terminal-loading')).toHaveCount(0, { timeout: 10_000 });
 }

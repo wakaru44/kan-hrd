@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -23,6 +24,8 @@ const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'kanhrd-files-')));
 const repo = join(sandbox, 'repo');
 const outsideDir = join(sandbox, 'outside');
 const reader = new RepoFileReader();
+// The index as `commit` left it: stat cache older than the working tree.
+const pristineIndex = join(sandbox, 'index.pristine');
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync(
@@ -59,6 +62,7 @@ beforeAll(() => {
   writeFileSync(join(repo, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0x0d]));
   git(repo, 'add', '-A');
   git(repo, 'commit', '-q', '-m', 'init');
+  copyFileSync(join(repo, '.git', 'index'), pristineIndex);
 
   // Working-tree changes the assertions read back.
   writeFileSync(join(repo, 'src', 'app.ts'), 'export const a = 2;\n');
@@ -356,13 +360,17 @@ describe('a read never writes the repository', () => {
   // refreshes it and writes `.git/index` — on the operator's own checkout,
   // while their agents are working in it.
   //
-  // Setting the mtime forward rather than rewriting the file puts it outside
-  // git's racy-timestamp window, which is what made this fire on roughly one
-  // run in two instead of every run. Each method is asserted on its own so a
-  // regression names the culprit instead of only saying "something wrote".
+  // Setting the mtime forward rather than rewriting the file makes the stat
+  // mismatch every run, and restoring the index below makes it mismatch for
+  // every assertion. Each method is asserted on its own so a regression names
+  // the culprit instead of only saying "something wrote".
   const index = join(repo, '.git', 'index');
 
   async function leavesTheIndexAlone(call: () => Promise<unknown>): Promise<void> {
+    // Rearm the trap. git refreshes a stale stat at most once: a call that
+    // did write leaves the cache fresh, and every later assertion — in this
+    // block or an earlier one — then passes on code that writes.
+    copyFileSync(pristineIndex, index);
     writeFileSync(join(repo, 'with space.txt'), 'spaced\n');
     const ahead = new Date(Date.now() + 10_000);
     utimesSync(join(repo, 'with space.txt'), ahead, ahead);
