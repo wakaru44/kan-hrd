@@ -1,39 +1,67 @@
 ## ADDED Requirements
 
-### Requirement: Files are read from the host's own filesystem
+### Requirement: Files are read where the pane is, by a source the operator configures
 
-The bridge SHALL read a pane's files from the machine that pane's host runs
-on, chosen by that host's configured transport: a local host's files SHALL be
-read from the bridge's filesystem, and an ssh host's SHALL be read over that
-host's established connection. The bridge SHALL NOT infer which machine a
-path belongs to by testing whether it exists locally.
+The bridge SHALL read a pane's files through a source chosen per host, never
+by testing whether a path exists on the bridge's own machine. The bridge SHALL
+resolve a host's source in this order and SHALL re-resolve it when the host
+reconnects:
 
-File access for a pane SHALL be refused when, and only when, the host is
-configured `files: false` (`files_disabled`), the host is not connected
-(`host_unavailable`), or herdr reported no `cwd` for the pane
-(`no_working_directory`). There SHALL be no `files_not_local` refusal.
+1. a host configured `files: false` SHALL refuse every file method with
+   `files_disabled`;
+2. a host whose configuration names a reader socket SHALL be served by
+   calling kanhrd's read-only file reader over that socket;
+3. a host the operator has declared local SHALL be served by the bridge's own
+   filesystem and `git`, in process, exactly as the shipped local
+   implementation does;
+4. any other host SHALL answer `files_unsupported`, naming what is missing.
 
-A remote read SHALL be bounded: at most one file session per host with
-requests queued, a per-request timeout, and the same byte and entry caps as a
-local read. A read that times out SHALL fail that request alone and SHALL
-NOT close the host's connection.
+A host that is not connected SHALL answer `host_unavailable` before its source
+is consulted, and a pane for which herdr reported no `cwd` SHALL answer
+`no_working_directory`. There SHALL be no `files_not_local` refusal.
+
+The reader socket SHALL be a Unix socket on the bridge's own machine, landed
+there by the operator's tunnel and reached with `connect()` like a herdr
+socket. The bridge SHALL NOT spawn `ssh`, read key material, reach an SSH
+agent, or open any connection of its own to a remote machine, and SHALL hold
+no credential for one.
+
+Where a host's source is a reader socket, the bridge SHALL NOT resolve paths,
+enforce caps or run `git` itself: it SHALL pass the pane's working directory
+through as an opaque root together with the client's relative path, and SHALL
+surface the reader's result and refusal unchanged. The bridge SHALL make no
+filesystem call for a path belonging to such a pane.
 
 #### Scenario: A pane on a remote host
 
-- **WHEN** a pane on a connected ssh host reports a `cwd` that does not exist
-  on the bridge's machine
-- **THEN** `repo.tree` lists that directory from the remote machine
+- **WHEN** a pane on a connected host with a reader socket reports a `cwd`
+  that does not exist on the bridge's machine
+- **THEN** the bridge calls the reader for that root and `repo.tree` lists the
+  directory from the machine the reader runs on
 
 #### Scenario: A local path that coincides with a remote one
 
-- **WHEN** a pane on an ssh host reports a `cwd` that also exists on the
+- **WHEN** a pane on such a host reports a `cwd` that also exists on the
   bridge's own machine
-- **THEN** the bridge reads the remote machine's copy, never its own
+- **THEN** the bridge still answers from the reader, never from its own
+  filesystem, and stats nothing locally for that path
+
+#### Scenario: A host with no reader
+
+- **WHEN** a connected host names no reader socket and is not declared local
+- **THEN** every file method answers `files_unsupported`, naming the reader
+  the host needs, and reads nothing
+
+#### Scenario: The tunnel drops mid-read
+
+- **WHEN** the forward carrying a host's reader socket dies while a
+  `file.read` is in flight
+- **THEN** the bridge answers `host_unavailable`, reads nothing from its own
+  filesystem, and resolves the source again when the host reconnects
 
 #### Scenario: The host is down
 
-- **WHEN** a remote host's transport is disconnected and a client calls
-  `file.read`
+- **WHEN** a host is disconnected and a client calls `file.read`
 - **THEN** the bridge answers `host_unavailable` and reads nothing
 
 #### Scenario: The operator disables a host
@@ -41,11 +69,29 @@ NOT close the host's connection.
 - **WHEN** a host is configured with `files: false`
 - **THEN** every file method for its panes answers `files_disabled`
 
-#### Scenario: A slow link
+### Requirement: The reader confines every read to directories it was given
 
-- **WHEN** a remote `file.read` exceeds the per-request timeout
-- **THEN** that request fails with `read_timeout`, the host stays connected,
-  and a later request succeeds
+kanhrd's file reader SHALL run on the machine holding the files and SHALL
+serve the four file methods over a Unix socket, as one request per line and
+one response per request, in the same result and error shapes the bridge
+returns for a local host. It SHALL accept a set of allowed directories,
+defaulting to the invoking user's home directory, and SHALL refuse any root
+whose real path is not inside one of them. Within an accepted root it SHALL
+apply the same confinement rule as a local read.
+
+The reader SHALL exit when the session that started it ends, so that a reader
+never outlives the forward that reaches it.
+
+#### Scenario: A root outside the allowed directories
+
+- **WHEN** a request names a root that is not inside any allowed directory
+- **THEN** the reader refuses with `path_outside_root` and reads nothing
+
+#### Scenario: The forward ends
+
+- **WHEN** the ssh session carrying a host's forwards ends
+- **THEN** the reader it started exits, and the next file call for that host
+  answers `host_unavailable`
 
 ## REMOVED Requirements
 
@@ -53,10 +99,11 @@ NOT close the host's connection.
 
 **Reason**: The gate guessed machine identity by stat-ing paths locally,
 which it could not do correctly — its own scenarios were about the wrong
-machine's checkout being served. With the transport declared per host
-(`add-ssh-host-transport`), the bridge knows which machine a pane's files
-live on and reads them there. The operator's `files: false` switch survives,
-in "Files are read from the host's own filesystem".
+machine's checkout being served. With the file source configured per host,
+the bridge stops guessing: a remote pane's files come from a kanhrd reader on
+that pane's own machine, over a socket the operator's tunnel lands beside the
+herdr one. The operator's `files: false` switch survives, in "Files are read
+where the pane is, by a source the operator configures".
 
 **Migration**: `files_not_local` is removed from the wire; clients read
 `files_available` and `git_available` on the pane instead.
@@ -81,9 +128,12 @@ bridge SHALL refuse with `path_outside_root`:
 - any path with a `.git` segment, before or after resolution.
 
 A path that does not exist SHALL be `not_found`, after its nearest existing
-ancestor has passed the same real-path check. For a remote host every
-resolution SHALL happen on that host, so a symlink SHALL be followed on the
-machine it lives on.
+ancestor has passed the same real-path check.
+
+Every resolution SHALL happen on the machine holding the file: in the bridge
+for a local host, in the reader for a host served over a socket. The bridge
+SHALL NOT resolve a reader-backed host's paths itself, and SHALL surface the
+reader's refusal unchanged.
 
 #### Scenario: Dot-dot traversal
 
@@ -100,8 +150,8 @@ machine it lives on.
 
 - **WHEN** a remote pane's directory holds `link -> /some/dir/outside` and a
   client calls `file.read` with `path: "link/secret.txt"`
-- **THEN** the real path is resolved on the remote machine, the bridge
-  answers `path_outside_root`, and reads nothing
+- **THEN** the reader resolves the real path on its own machine and refuses,
+  the bridge answers `path_outside_root`, and nothing is read
 
 #### Scenario: A symlink that stays inside
 
@@ -118,10 +168,12 @@ absolute path from the client. A pane herdr no longer lists SHALL be
 `repo.status` and `repo.diff` SHALL additionally need a git checkout
 containing it and SHALL answer `no_checkout` when there is none.
 
-A pane SHALL advertise `files_available` — the host is enabled and connected
-and herdr reported a `cwd` — and `git_available` — a checkout containing that
-`cwd` exists on the host. The methods SHALL re-check on every call rather
-than trust either flag.
+A pane SHALL advertise `files_available` — the host is enabled, connected and
+has a file source, and herdr reported a `cwd` — and `git_available` — the
+source reported a checkout containing that `cwd`. `git_available` SHALL be
+absent when that is unknown rather than guessed, and the git methods SHALL
+answer `no_checkout` authoritatively on every call rather than trust either
+flag.
 
 `bridge.capabilities` SHALL carry `repoFiles` —
 `{ statusPollIntervalMs, fileReadMaxBytes, diffMaxBytes, treeMaxEntries,
@@ -150,7 +202,9 @@ omit the field entirely otherwise.
 `repo.status` SHALL return `{ checkout_path, branch, head, upstream?,
 ahead?, behind?, entries, truncated }`, from
 `git status --porcelain=v2 --branch -z --untracked-files=normal` run on the
-pane's host in the pane's `cwd`, for the checkout containing it. `branch`
+machine the pane is on, in the pane's `cwd`, for the checkout containing it.
+For a reader-backed host that run belongs to the reader; the bridge SHALL NOT
+run `git` for a pane it does not serve locally. `branch`
 SHALL be `null` when HEAD is detached and `head` SHALL be `null` when the
 branch has no commit. Each entry SHALL be `{ path, kind, index, worktree,
 orig_path? }` with `kind` one of `changed`, `renamed`, `unmerged`,
@@ -172,6 +226,22 @@ this method; the bridge SHALL NOT push status.
 
 #### Scenario: Git is missing on the host
 
-- **WHEN** no `git` executable is on the PATH of the machine the pane's host
-  runs on
+- **WHEN** no `git` executable is on the PATH of the machine the pane is on
 - **THEN** the bridge answers `git_unavailable`
+
+### Requirement: The file panel's reach is documented
+
+The documentation SHALL state which panes show files and which do not, in
+operator terms: a connected host that is not `files: false` and has a file
+source serves the panel for any pane with a working directory, the git views
+additionally need a checkout, `files: false` is the operator's opt-out, and a
+host with no reader says so and names what to install. What a remote host
+needs — kanhrd present, a reader socket configured, the tunnel up — SHALL be
+documented where the operator adds the host. Any documentation describing the
+panel as local-only SHALL be corrected rather than annotated.
+
+#### Scenario: An operator asks why a pane has no file panel
+
+- **WHEN** a pane shows no file panel
+- **THEN** the documented list of reasons covers the case, and each reason
+  names what to change

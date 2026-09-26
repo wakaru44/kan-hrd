@@ -51,6 +51,7 @@ export const CARD_COPY = {
   splitRight: COPY.card.splitRight,
   move: COPY.card.move,
   moveExistingTab: COPY.card.moveExistingTab,
+  moveExistingWorkspace: COPY.card.moveExistingWorkspace,
   moveNewTab: COPY.card.moveNewTab,
   moveNewWorkspace: COPY.card.moveNewWorkspace,
   splitDown: COPY.card.splitDown,
@@ -223,10 +224,12 @@ export class Card {
   // ends up moving a pane on a colleague's machine when they meant to tidy
   // their own board.
 
-  /** `move to…` expands its three destinations in place, like `park in…` above it. */
+  /** `move to…` expands its destinations in place, like `park in…` above it. */
   protected readonly moveListOpen = signal(false);
   /** `another tab` expands the destination list under it — one menu, one keyboard contract. */
   protected readonly moveTabListOpen = signal(false);
+  /** `another workspace` expands the same list at workspace level, in the same menu. */
+  protected readonly moveWorkspaceListOpen = signal(false);
 
   /** The pane's own tab, which the destination list leaves out: moving there is herdr's `same_tab` no-op. */
   protected readonly ownTab = computed(() => ({
@@ -234,10 +237,21 @@ export class Card {
     tabId: this.pane().tab.id,
   }));
 
+  /**
+   * The pane's own workspace, which the workspace list leaves out: moving
+   * into it is `{type:'new_tab', workspace_id: <own>}`, the same request
+   * `a new tab` sends one line below.
+   */
+  protected readonly ownWorkspace = computed(() => ({
+    host: this.pane().host,
+    workspaceId: this.pane().workspace.id,
+  }));
+
   protected toggleMoveList(): void {
     this.moveListOpen.update((open) => !open);
     if (!this.moveListOpen()) {
       this.moveTabListOpen.set(false);
+      this.moveWorkspaceListOpen.set(false);
     }
   }
 
@@ -245,11 +259,29 @@ export class Card {
     this.moveTabListOpen.update((open) => !open);
   }
 
+  protected toggleMoveWorkspaceList(): void {
+    this.moveWorkspaceListOpen.update((open) => !open);
+  }
+
   protected moveToTab(destination: Destination): void {
     if (!destination.tabId) {
       return;
     }
     void this.doMove({ type: 'tab', tab_id: destination.tabId, split: 'right' });
+  }
+
+  /**
+   * herdr has no "move into an existing workspace": a pane lives in a tab,
+   * and `new_tab` with a `workspace_id` is the only destination in its
+   * union that lands one in a workspace the operator names. The other way
+   * to reach the same workspace is `another tab`, which needs one of its
+   * tabs to still exist — and after a last-pane move, it does not.
+   */
+  protected moveToWorkspace(destination: Destination): void {
+    if (!destination.workspaceId) {
+      return;
+    }
+    void this.doMove({ type: 'new_tab', workspace_id: destination.workspaceId });
   }
 
   protected moveToNewTab(): void {
@@ -455,6 +487,7 @@ export class Card {
       this.parkListOpen();
       this.moveListOpen();
       this.moveTabListOpen();
+      this.moveWorkspaceListOpen();
       const menu = this.activeMenuEl();
       if (menu) {
         const items = menuItems(menu);
@@ -503,6 +536,7 @@ export class Card {
     this.parkListOpen.set(false);
     this.moveListOpen.set(false);
     this.moveTabListOpen.set(false);
+    this.moveWorkspaceListOpen.set(false);
     if (this.openMenu() === null) {
       trigger?.focus();
     }
@@ -517,6 +551,7 @@ export class Card {
     this.parkListOpen.set(false);
     this.moveListOpen.set(false);
     this.moveTabListOpen.set(false);
+    this.moveWorkspaceListOpen.set(false);
     if (refocus) {
       trigger?.focus();
     }

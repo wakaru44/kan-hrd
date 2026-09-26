@@ -1,0 +1,275 @@
+/*
+ * Pane detail below `--breakpoint-mobile`. EVERY rule in this file is inside
+ * the one media query, which is how "desktop does not regress" is proved:
+ * there is no selector here that can match at or above 900px.
+ *
+ * It is a second stylesheet on the same component rather than a block at the
+ * bottom of `pane-detail.scss` because the `anyComponentStyle` budget in
+ * `angular.json` is per style file, and `pane-detail.scss` already sits at
+ * 7.8 kB against an 8 kB error budget. Splitting the phone rules out gives
+ * both files room; merging them back would fail the build.
+ *
+ * The layout it builds is the one the operator settled on their own phone in
+ * the `mobile-chrome/mock1` lab, which openspec `trim-mobile-chrome` then
+ * ported here and deleted: three rows instead of seven.
+ *
+ *   identity   back · next-card · title + rename · host seal · overflow
+ *   navigator  the tab as a disclosure chip · the cards of that tab
+ *   meta       status · repo + the files toggle
+ *
+ * Everything the rows shed — workspace / tab, checkout path, pane id,
+ * revision, last-poll elapsed, the stale marker — is revealed under the meta
+ * row by the overflow trigger. Nothing is lost, and nothing is hover-only.
+ *
+ * `--breakpoint-mobile` is a custom property and cannot be read by a media
+ * query, so 900px is written out — it is the same number.
+ */
+
+@media (max-width: 900px) {
+  /* Full-screen terminal; the header stays put so the back control is
+     visible without scrolling. */
+  .pane-detail {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .detail-header {
+    padding: var(--sp-2) var(--sp-3);
+    row-gap: var(--sp-2);
+  }
+
+  /* Narrower gutter at phone width: the terminal keeps its columns. */
+  .detail-body {
+    padding: var(--sp-2);
+    padding-bottom: calc(var(--sp-2) + var(--key-bar-reserve));
+  }
+
+  /* ---- row 1: identity -------------------------------------------------
+   *
+   * One row, in focus order, and one row structurally: `.identity` becomes a
+   * `nowrap` flex line of its own rather than five header children hoping to
+   * fit, so the budget cannot be broken by a long title or an extra control.
+   * The back control keeps its icon and loses only its label — the accessible
+   * name and the tooltip still carry `copy.nav.backToBoard`, and it is still
+   * the first focusable element and still a 40x40 target.
+   */
+  .detail-header .identity {
+    order: 0;
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+  }
+
+  // The row is 40px tall because every control on it is, at every pointer
+  // type. The shared `pointer: coarse` block already does this on a real
+  // phone; stating it here too makes the row budget a property of the width
+  // rather than of the input device.
+  .detail-header .back,
+  .detail-header .next-card,
+  .detail-header .rename-control {
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .detail-header .back {
+    order: 0;
+    padding: var(--sp-1);
+
+    .back-label {
+      display: none;
+    }
+  }
+
+  .detail-header .next-card {
+    order: 1;
+  }
+
+  .detail-header .title-row {
+    order: 2;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* The pencil waits behind the overflow and returns to the title's trailing
+     edge when it opens: the pair is never split, only ever both here or both
+     away. At rest that is 48px the title keeps. */
+  .detail-header .rename-control {
+    display: none;
+  }
+
+  .detail-header.overflow-open .rename-control {
+    display: inline-flex;
+  }
+
+  .detail-header .host-seal {
+    order: 3;
+  }
+
+  /* Its touch size is set here, not in the shared `pointer: coarse` block:
+     that block sits below the base `display: none` and would reveal the
+     trigger on a touchscreen DESKTOP, where the bar is unchanged. */
+  .detail-header .overflow-trigger {
+    order: 4;
+    display: inline-flex;
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+    margin-inline-start: auto;
+  }
+
+  /* The workspace / tab breadcrumb leaves the header: the tab name is the
+     navigator chip's own label one row down, so the row was repeating it.
+     Both names come back under the overflow. */
+  .detail-header .breadcrumb {
+    display: none;
+  }
+
+  /* ---- row 2: navigator ------------------------------------------------
+   *
+   * herdr's two levels on one row. The tab is a disclosure control carrying
+   * the current tab's name; the cards of that tab sit beside it. Selecting
+   * another tab is still a link in the strip the disclosure opens, so the
+   * URL is still the state.
+   */
+  .detail-header .navigator {
+    order: 5;
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+  }
+
+  .detail-header .tab-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    flex: none;
+    min-height: var(--touch-target-min);
+    padding: 0 var(--sp-2);
+    border: var(--elev-3);
+    border-radius: var(--radius-md);
+    background: var(--paper-raised);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    font-weight: var(--fw-semi);
+    cursor: pointer;
+
+    /* Open is an ochre edge, like the file panel's toggle — never a fill. */
+    &[aria-expanded='true'] {
+      border-color: var(--ochre-line);
+    }
+
+    .icon {
+      width: var(--icon-sm);
+      height: var(--icon-sm);
+      transition: transform var(--motion-fast) var(--ease-out);
+
+      &.open {
+        transform: rotate(90deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .icon {
+        transition: none;
+      }
+    }
+  }
+
+  .tab-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tab-chip-count {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-caption);
+    color: var(--ink-mute);
+  }
+
+  .detail-header .switcher-slot {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-left: 0;
+  }
+
+  .detail-header .tab-slot {
+    order: 6;
+    display: none;
+  }
+
+  .detail-header.nav-open .tab-slot {
+    display: block;
+    border-top: var(--elev-1);
+    padding-top: var(--sp-1);
+  }
+
+  /* ---- row 3: meta -----------------------------------------------------
+   *
+   * Status and the files toggle are the two live readouts; the rest are
+   * diagnostics and wait behind the overflow. They stay in the strip's own
+   * flow and simply wrap onto further lines when it opens.
+   */
+  .detail-header .meta-strip {
+    order: 7;
+  }
+
+  .detail-header .checkout-path,
+  .detail-header .pane-id,
+  .detail-header .revision,
+  .detail-header .updated,
+  .detail-header .stale-marker {
+    display: none;
+  }
+
+  .detail-header.overflow-open {
+    .checkout-path,
+    .pane-id,
+    .revision,
+    .updated,
+    .stale-marker {
+      display: inline-flex;
+    }
+
+    .breadcrumb {
+      display: inline-flex;
+      order: 8;
+      flex: 1 0 100%;
+    }
+
+    /* The full path is longer than the viewport. It wraps inside the strip
+       rather than widening the page — the page never scrolls sideways. */
+    .checkout-path {
+      flex: 1 0 100%;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  /* ---- collapse while the terminal has focus ---------------------------
+   *
+   * The soft keyboard takes half the screen, so the two rows the operator is
+   * not typing into step aside. The identity row never does: the back
+   * control has to stay visible without scrolling, and it is also what
+   * brings the rest back — a tap anywhere in the header restores it, and so
+   * does the terminal losing focus. Nothing here hides on hover and nothing
+   * hides on a gesture.
+   */
+  .detail-header.collapsed {
+    .navigator,
+    .tab-slot,
+    .meta-strip {
+      display: none;
+    }
+  }
+}

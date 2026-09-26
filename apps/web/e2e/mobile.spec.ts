@@ -628,7 +628,10 @@ test('[26] the pane-detail back control is visible without scrolling and focusab
   await app.goto(`/pane/${panePicker.host}/${panePicker.id}`);
   const back = app.locator('.detail-header .back');
   await expect(back).toBeVisible();
-  await expect(back).toHaveText(new RegExp(COPY.nav.backToBoard));
+  // Below the breakpoint the control is its icon: the label is the
+  // accessible name and the tooltip, not a string competing with the title
+  // for the identity row (openspec `trim-mobile-chrome`).
+  await expect(back).toHaveAttribute('aria-label', COPY.nav.backToBoard);
   await expectTouchTarget(back, 'back control');
 
   // Visible without scrolling: inside the viewport on first paint.
@@ -645,6 +648,140 @@ test('[26] the pane-detail back control is visible without scrolling and focusab
     return focusable?.classList.contains('back') ?? false;
   });
   expect(firstIsBack, "the back control is not the header's first focusable element").toBe(true);
+});
+
+/**
+ * The phone row budget (openspec `trim-mobile-chrome`). The header was seven
+ * stacked rows and 298px — 45% of this viewport — and the terminal's first
+ * row started at y=379 of 664. These assert the three-row budget and the
+ * share the terminal is owed, at the numbers, not at "looks better".
+ */
+test('[39] the pane-detail header is three rows and leaves the terminal over half the screen', async ({
+  app,
+  panePicker,
+}) => {
+  await app.goto(`/pane/${panePicker.host}/${panePicker.id}`);
+  await expect(app.locator('.xterm-rows')).toBeVisible({ timeout: 10_000 });
+
+  const viewport = app.viewportSize()!.height;
+  const header = await app.locator('.detail-header').boundingBox();
+  const terminal = await app.locator('.terminal-container').boundingBox();
+  expect(header, 'no header').not.toBeNull();
+  expect(terminal, 'no terminal container').not.toBeNull();
+
+  expect(header!.height, `header is ${header!.height}px`).toBeLessThanOrEqual(150);
+  expect(terminal!.y, `terminal starts at ${terminal!.y}px`).toBeLessThanOrEqual(viewport / 4);
+  expect(terminal!.height / viewport, 'terminal share of the viewport').toBeGreaterThan(0.45);
+
+  // Three rows: every control on the identity row shares it, and nothing
+  // below the meta row is chrome.
+  const rows = await app.evaluate(() => {
+    const header = document.querySelector('.detail-header')!;
+    const rowsSeen = new Set<number>();
+    for (const child of Array.from(header.children)) {
+      const box = child.getBoundingClientRect();
+      if (box.height === 0) continue;
+      rowsSeen.add(Math.round(box.top + box.height / 2));
+    }
+    // Controls centred on the same row share a centre; allow 4px of slack by
+    // bucketing, which is what the eye does.
+    const buckets: number[] = [];
+    for (const centre of [...rowsSeen].sort((a, b) => a - b)) {
+      if (buckets.length === 0 || centre - buckets[buckets.length - 1] > 4) buckets.push(centre);
+    }
+    return buckets.length;
+  });
+  expect(rows, 'header rows').toBeLessThanOrEqual(3);
+
+  await expectNoPageHorizontalScroll(app);
+});
+
+test('[40] the tab level and the card level share one row, and the tab discloses the strip', async ({
+  app,
+  panePicker,
+}) => {
+  await app.goto(`/pane/${panePicker.host}/${panePicker.id}`);
+  await expect(app.locator('.xterm-rows')).toBeVisible({ timeout: 10_000 });
+
+  const chip = app.locator('[data-tab-chip]');
+  if ((await chip.count()) === 0) {
+    test.skip(true, 'this workspace has one tab, so no tab level renders');
+    return;
+  }
+
+  await expect(chip).toBeVisible();
+  await expectTouchTarget(chip, 'tab disclosure');
+  await expect(app.locator('app-tab-strip')).toBeHidden();
+
+  const switcher = app.locator('app-card-switcher');
+  if ((await switcher.count()) > 0) {
+    const a = (await chip.boundingBox())!;
+    const b = (await switcher.boundingBox())!;
+    expect(a.y + a.height, 'the two levels share the navigator row').toBeGreaterThan(b.y);
+    expect(b.y + b.height).toBeGreaterThan(a.y);
+  }
+
+  await chip.click();
+  await expect(app.locator('app-tab-strip')).toBeVisible();
+  // Still links, so the URL is still the state.
+  await expect(app.locator('app-tab-strip a.tab').first()).toHaveAttribute('href', /\/pane\//);
+  await expectNoPageHorizontalScroll(app);
+});
+
+test('[41] the diagnostics are behind a visible overflow trigger, never a hover', async ({
+  app,
+  panePicker,
+}) => {
+  await app.goto(`/pane/${panePicker.host}/${panePicker.id}`);
+  await expect(app.locator('.xterm-rows')).toBeVisible({ timeout: 10_000 });
+
+  const trigger = app.locator('[data-overflow-trigger]');
+  await expect(trigger).toBeVisible();
+  await expectTouchTarget(trigger, 'overflow trigger');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+  // Status stays on the header; the diagnostics do not.
+  await expect(app.locator('.detail-header .status')).toBeVisible();
+  await expect(app.locator('.detail-header .pane-id')).toBeHidden();
+  await expect(app.locator('.detail-header .breadcrumb')).toBeHidden();
+
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(app.locator('.detail-header .pane-id')).toBeVisible();
+  await expect(app.locator('.detail-header .breadcrumb')).toBeVisible();
+  await expectNoPageHorizontalScroll(app);
+});
+
+test('[42] the header collapses while the terminal has focus, and one tap brings it back', async ({
+  app,
+  panePicker,
+}) => {
+  await app.goto(`/pane/${panePicker.host}/${panePicker.id}`);
+  await expect(app.locator('.xterm-rows')).toBeVisible({ timeout: 10_000 });
+
+  const header = app.locator('.detail-header');
+  const expanded = (await header.boundingBox())!.height;
+
+  await app.locator('.xterm-screen').click();
+  await expect(app.locator('.xterm-helper-textarea')).toBeFocused({ timeout: 3_000 });
+  await expect(header).toHaveClass(/collapsed/);
+
+  const collapsed = (await header.boundingBox())!.height;
+  expect(collapsed, `collapsed header is ${collapsed}px`).toBeLessThan(expanded);
+  expect(collapsed).toBeLessThanOrEqual(64);
+
+  // The way out never collapses, and the terminal got the rows.
+  const back = app.locator('.detail-header .back');
+  await expect(back).toBeVisible();
+  await expectTouchTarget(back, 'back control while collapsed');
+
+  // One tap on the header brings the rows back WITHOUT moving focus — on a
+  // phone that means the soft keyboard stays up instead of being dismissed
+  // and re-summoned.
+  await app.locator('.detail-header .pane-title').click();
+  await expect(header).not.toHaveClass(/collapsed/);
+  expect((await header.boundingBox())!.height).toBe(expanded);
+  await expect(app.locator('.xterm-helper-textarea')).toBeFocused();
 });
 
 test('[28] with the terminal focused, Escape and ? reach the terminal, not the app', async ({

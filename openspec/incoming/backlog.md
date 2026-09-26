@@ -493,3 +493,63 @@ radius is every route, so it wants its own proposal.
 - On Android, the same check with the URL bar shown and hidden, measured
   before and after.
 
+
+## Add to Home Screen on iOS gets no app icon
+
+**Problem**
+
+`apps/web/src/index.html` declares only two SVG favicons (light and dark,
+`favicon.svg` / `favicon-dark.svg`). iOS Safari does not accept SVG for the
+home-screen icon: "Add to Home Screen" looks for `apple-touch-icon`, finds
+none, and falls back to a screenshot of the page. There is also no web app
+manifest, so Android/Chrome installs have no declared icon either, and no
+`apple-mobile-web-app-title`, so the home-screen label comes from `<title>`
+— "kanhrd — a shepherd's console" — which iOS truncates.
+
+**Reproduction/current evidence**
+
+On an iPhone, open the board through the Tailscale HTTPS name and use
+Share → Add to Home Screen. The proposed icon is a thumbnail of the page,
+not the mark. Verified in the source, not on device: `index.html:11-21` has
+the two `rel="icon"` SVG links and nothing else; `apps/web/public/` holds
+`favicon.svg`, `favicon-dark.svg`, `fonts/` and `mark/crook.svg` — no PNG
+at any size, and no `manifest.webmanifest` anywhere in the repo.
+
+**Expected behavior**
+
+Adding the board to an iOS home screen yields the kanhrd mark on the
+brand's ground, and a short label. The same assets serve an Android install
+through a manifest.
+
+**Investigation/fix notes**
+
+iOS wants a raster `apple-touch-icon`: a 180x180 PNG, opaque — a
+transparent one is composited onto black, which would put the crook on
+black rather than paper cream. iOS applies its own rounded corners, so the
+source must not pre-round them, and it needs its own padding since iOS adds
+none. Android wants a manifest with 192 and 512 PNGs plus `maskable`
+variants if the mark should survive the circle mask.
+
+Source asset is `apps/web/public/mark/crook.svg`; the ground colour and any
+padding ratio come from `docs/DESIGN-SYSTEM.md`, and the home-screen label
+is copy, so it belongs in `docs/BRAND.md` — do not invent either. Dark mode
+does not apply: there is one home-screen icon, so it is the light-ground
+mark, not the `prefers-color-scheme` pair the favicons use.
+
+Open question for a maintainer before this is specified: whether kanhrd
+wants to be installable at all (a manifest with `display: standalone`
+changes how the board launches — no Safari chrome, and the app gets its own
+history stack), or only wants a correct icon on an otherwise normal Safari
+bookmark. The second is a three-line change; the first is a PWA decision
+with its own consequences, including how the terminal's key bar behaves
+without browser toolbars.
+
+**Verification/acceptance criteria**
+
+- On an iPhone, Add to Home Screen shows the kanhrd mark, not a page
+  screenshot, and the label is the short brand name.
+- The icon renders correctly on both a light and a dark iOS home screen
+  wallpaper, with no black box behind the mark.
+- On Android/Chrome, the install prompt uses the same mark.
+- `index.html` declares `apple-touch-icon` and, if the manifest decision is
+  yes, a `manifest.webmanifest` that lints clean.

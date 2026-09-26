@@ -6,7 +6,8 @@ and the bridge owns no credentials of its own (see
 `docs/adr/0003-delegated-auth-with-loopback-default.md`). This page covers
 the three placements that combination supports: laptop-only, cloud hub, and
 a mix of the two with a reverse SSH tunnel bridging them — plus the Docker
-packaging of the laptop case.
+packaging of the laptop case, and the forward tunnel (§5) that puts a
+remote machine's herdr on a laptop bridge's board.
 
 The bridge binds `127.0.0.1` by default. Binding on any other interface
 requires an explicit `--i-know-what-im-doing` flag — that flag is your
@@ -37,17 +38,17 @@ pnpm install
 pnpm --filter @kanhrd/bridge dev
 ```
 
-By default the bridge points at `~/.config/herdr/herdr.sock` (or
-`$XDG_CONFIG_HOME/herdr/herdr.sock`) and binds `127.0.0.1`. Open the printed
-URL in a browser on the same machine. Safe by default — nothing to
-configure, nothing reachable off-box.
+With no config file at all the bridge points at
+`~/.config/herdr/herdr.sock` and binds `127.0.0.1`. Open the printed URL in
+a browser on the same machine. Safe by default — nothing to configure,
+nothing reachable off-box.
 
 Opening a card's terminal detail view costs one `pane.read` call against
-herdr per open terminal per `outputPollIntervalMs` (default 150ms) — the
-bridge polls rather than receiving a push event (see
-`docs/adr/0004-full-snapshot-terminal-output-via-polling.md`). No config
-change is needed for the demo; if you want a cheaper cadence, set
-`outputPollIntervalMs` in `kanhrd.config.yaml` to a higher value.
+herdr per open terminal every 150ms — the bridge polls rather than
+receiving a push event (see
+`docs/adr/0004-full-snapshot-terminal-output-via-polling.md`). The interval
+is fixed (`OUTPUT_POLL_INTERVAL_MS` in `apps/bridge/src/ws/dispatch.ts`) and
+reported to the SPA as `outputPollIntervalMs`; it is not a config key.
 
 Lifecycle ops (`pane.close`, `tab.close`, `workspace.close`) run against
 your real local herdr and do destroy real state — a closed pane loses its
@@ -269,3 +270,33 @@ the browser's origin no longer matches, so every `/ws` handshake is
 refused with 403 and the reason appears only in `docker compose logs
 bridge`. Change the `--allowed-origin` values to the origin you actually
 publish.
+
+## 5. Remote hosts on a laptop bridge (forward tunnel)
+
+The mirror of recipe 3. There the laptop pushes its socket up to an
+always-on hub; here your own laptop is the hub and you pull a remote
+machine's herdr socket down to it.
+
+You raise one `ssh -L` forward per remote host, landing that machine's
+herdr socket at a path on your laptop, and name that path in `hosts:`. The
+bridge connects to it like any local host and never knows a tunnel is
+involved — that is `docs/adr/0006-remote-herdr-hosts.md`, which settled
+that the bridge opens no tunnels of its own and holds no keys.
+
+```bash
+ssh -f -N -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes \
+  -L ~/.kanhrd/alpaca01.sock:/home/you/.config/herdr/herdr.sock alpaca01
+```
+
+```yaml
+hosts:
+  - name: alpaca01
+    socket: ~/.kanhrd/alpaca01.sock
+```
+
+Both ends of `-L` are socket paths here, not ports, and both options are
+load-bearing. The step-by-step, including how to verify and how to read
+the three ways a tunnel fails, is
+[`how-to/remote-herdr-host.md`](./how-to/remote-herdr-host.md).
+
+A tunnelled host gets no file panel, for the reason given in recipe 3.

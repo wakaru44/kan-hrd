@@ -1209,6 +1209,7 @@ describe('Card: move', () => {
     );
     expect(labels).toEqual([
       CARD_COPY.moveExistingTab,
+      CARD_COPY.moveExistingWorkspace,
       CARD_COPY.moveNewTab,
       CARD_COPY.moveNewWorkspace,
     ]);
@@ -1238,6 +1239,64 @@ describe('Card: move', () => {
     });
   });
 
+  /**
+   * The way back from `a new workspace`. herdr has no "move into an existing
+   * workspace": a pane lives in a tab, so the workspace the operator names is
+   * carried on `new_tab` (openspec `add-move-to-existing-destination`).
+   */
+  it('moves into an existing workspace as a new tab carrying that workspace id', () => {
+    const { fixture, menu } = open();
+    click(menu, '.move');
+    fixture.detectChanges();
+    click(menu, '.move-existing-workspace');
+    fixture.detectChanges();
+
+    const options = Array.from(
+      menu.querySelectorAll<HTMLButtonElement>('.destination-picker [role="menuitem"]')
+    );
+    expect(options.map((o) => o.textContent?.trim()))
+      .withContext("the pane's own workspace is `a new tab` again, so it is not offered")
+      .toEqual(['herdr']);
+
+    options[0].click();
+    expect(store.movePane).toHaveBeenCalledWith('laptop', {
+      pane_id: 'p1',
+      destination: { type: 'new_tab', workspace_id: 'w2' },
+      focus: false,
+    });
+  });
+
+  it('offers the same four destinations from the always-visible move control', () => {
+    const fixture = TestBed.createComponent(Card);
+    fixture.componentRef.setInput('pane', movingPane());
+    fixture.componentRef.setInput('capabilities', caps(true));
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>('.card-action.move')!.click();
+    fixture.detectChanges();
+    const menu = document.getElementById(
+      el.querySelector('.card-action.move')!.getAttribute('aria-controls')!
+    )!;
+    expect(
+      Array.from(menu.querySelectorAll<HTMLButtonElement>(':scope > [role="menuitem"]')).map((b) =>
+        b.textContent?.trim()
+      )
+    ).toEqual([
+      CARD_COPY.moveExistingTab,
+      CARD_COPY.moveExistingWorkspace,
+      CARD_COPY.moveNewTab,
+      CARD_COPY.moveNewWorkspace,
+    ]);
+
+    menu.querySelector<HTMLButtonElement>('.move-existing-workspace')!.click();
+    fixture.detectChanges();
+    menu.querySelector<HTMLButtonElement>('.destination-picker [role="menuitem"]')!.click();
+    expect(store.movePane.calls.mostRecent().args[1].destination).toEqual({
+      type: 'new_tab',
+      workspace_id: 'w2',
+    });
+  });
+
   it('moves into a new tab and a new workspace, using herdr’s own destination union', () => {
     const first = open();
     click(first.menu, '.move');
@@ -1245,7 +1304,7 @@ describe('Card: move', () => {
     const firstItems = Array.from(
       first.menu.querySelectorAll<HTMLButtonElement>('.move-destinations > [role="menuitem"]')
     );
-    firstItems[1].click();
+    firstItems[2].click();
     expect(store.movePane.calls.mostRecent().args[1].destination).toEqual({ type: 'new_tab' });
 
     store.movePane.calls.reset();
@@ -1255,7 +1314,7 @@ describe('Card: move', () => {
     const items = Array.from(
       second.menu.querySelectorAll<HTMLButtonElement>('.move-destinations > [role="menuitem"]')
     );
-    items[2].click();
+    items[3].click();
     expect(store.movePane.calls.mostRecent().args[1].destination).toEqual({
       type: 'new_workspace',
     });
@@ -1276,7 +1335,7 @@ describe('Card: move', () => {
     const items = Array.from(
       menu.querySelectorAll<HTMLButtonElement>('.move-destinations > [role="menuitem"]')
     );
-    items[1].click();
+    items[2].click();
     await settleMove();
 
     expect(toast.toasts().length)
@@ -1293,7 +1352,7 @@ describe('Card: move', () => {
     const items = Array.from(
       menu.querySelectorAll<HTMLButtonElement>('.move-destinations > [role="menuitem"]')
     );
-    items[1].click();
+    items[2].click();
     await settleMove();
 
     const shown = toast.toasts();
@@ -1313,7 +1372,7 @@ describe('Card: move', () => {
     const items = Array.from(
       menu.querySelectorAll<HTMLButtonElement>('.move-destinations > [role="menuitem"]')
     );
-    items[1].click();
+    items[2].click();
     await settleMove();
 
     const shown = toast.toasts();

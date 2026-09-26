@@ -246,14 +246,226 @@ describe('PaneDetail top bar', () => {
     expect(el.querySelector('.host-seal')?.textContent?.trim()).toBe('laptop');
   });
 
-  it('collapses the breadcrumb to the tab name below the mobile breakpoint', async () => {
+  it('takes the breadcrumb off the header below the mobile breakpoint, into the overflow', async () => {
     const el = await render([pane('pane-1')]);
 
     // karma's viewport is below `--breakpoint-mobile`, so this IS the phone case.
     expect(window.innerWidth).toBeLessThan(900);
-    expect(getComputedStyle(el.querySelector('.crumb-workspace') as Element).display).toBe('none');
-    expect(getComputedStyle(el.querySelector('.crumb-sep') as Element).display).toBe('none');
-    expect(getComputedStyle(el.querySelector('.crumb-tab') as Element).display).not.toBe('none');
+    // The tab name is the navigator chip's own label one row down, so the
+    // breadcrumb was repeating it; both names come back under the overflow.
+    expect(getComputedStyle(el.querySelector('.breadcrumb') as Element).display).toBe('none');
+
+    (el.querySelector('[data-overflow-trigger]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(el.querySelector('.breadcrumb') as Element).display).not.toBe('none');
+    expect(el.querySelector('.breadcrumb .crumb-workspace')?.textContent?.trim()).toBe('kanhrd');
+    expect(el.querySelector('.breadcrumb .crumb-tab')?.textContent?.trim()).toBe('build');
+  });
+
+  // --- the phone header (trim-mobile-chrome) -----------------------------
+  //
+  // karma's viewport is below `--breakpoint-mobile`, so these run against the
+  // phone layout as written. Where a height is asserted the root is given the
+  // reference width `docs/UX-GUIDELINES.md` names.
+
+  function phone(el: HTMLElement): void {
+    el.style.width = '390px';
+  }
+
+  /**
+   * The vertical centre of each element. The header centres its children, so
+   * two controls of different heights on the SAME row share a centre and not
+   * a top — comparing tops would only prove they are the same height.
+   */
+  function rowsOf(el: HTMLElement, selectors: readonly string[]): number[] {
+    return selectors
+      .map((selector) => el.querySelector(selector) as HTMLElement | null)
+      .filter((node): node is HTMLElement => node !== null)
+      .map((node) => {
+        const box = node.getBoundingClientRect();
+        return Math.round(box.top + box.height / 2);
+      });
+  }
+
+  /** Two boxes are on the same row when their vertical ranges overlap. */
+  function sameRow(a: Element, b: Element): boolean {
+    const one = a.getBoundingClientRect();
+    const two = b.getBoundingClientRect();
+    return one.bottom > two.top && two.bottom > one.top;
+  }
+
+  it('puts back, next-card, title, host seal and the overflow on one row', async () => {
+    const el = await render([pane('pane-1'), pane('pane-2')]);
+    phone(el);
+
+    const tops = rowsOf(el, [
+      '.back',
+      '.next-card',
+      '.title-row',
+      '.host-seal',
+      '[data-overflow-trigger]',
+    ]);
+    expect(tops.length).toBe(5);
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2);
+  });
+
+  it('keeps the back control first, visible and a 40x40 target without its label', async () => {
+    const el = await render([pane('pane-1')]);
+    phone(el);
+
+    const back = el.querySelector('.back') as HTMLElement;
+    const focusable = el.querySelectorAll<HTMLElement>(
+      '.detail-header a[href], .detail-header button'
+    );
+    expect(focusable[0]).toBe(back);
+    expect(getComputedStyle(back).display).not.toBe('none');
+    expect(getComputedStyle(back.querySelector('.back-label') as Element).display).toBe('none');
+    const box = back.getBoundingClientRect();
+    expect(Math.round(box.width)).toBeGreaterThanOrEqual(40);
+    expect(Math.round(box.height)).toBeGreaterThanOrEqual(40);
+    expect(back.getAttribute('aria-label') ?? back.textContent?.trim()).toBeTruthy();
+  });
+
+  it('merges the tab level and the card level onto one row, tab as a disclosure', async () => {
+    const el = await render(
+      [pane('pane-1'), pane('pane-2'), pane('pane-3', { tab: { id: 't2', name: 'review' } })],
+      'pane-1',
+      [tabOf('t1', 'build'), tabOf('t2', 'review')]
+    );
+    phone(el);
+
+    const chip = el.querySelector('[data-tab-chip]') as HTMLElement;
+    const strip = el.querySelector('app-tab-strip') as HTMLElement;
+    const switcher = el.querySelector('app-card-switcher') as HTMLElement;
+    expect(chip).not.toBeNull();
+    expect(getComputedStyle(strip).display).toBe('none');
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    expect(sameRow(chip, switcher))
+      .withContext('the tab level and the card level share the navigator row')
+      .toBeTrue();
+
+    chip.click();
+    fixture.detectChanges();
+    expect(getComputedStyle(strip).display).not.toBe('none');
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+    // Still a link, so the URL is still the state.
+    expect(strip.querySelector('a.tab')?.getAttribute('href')).toBe('/pane/laptop/pane-1');
+  });
+
+  it('leaves status and the files toggle on the meta row and the diagnostics behind the overflow', async () => {
+    const el = await render([pane('pane-1')]);
+    phone(el);
+
+    expect(getComputedStyle(el.querySelector('.status') as Element).display).not.toBe('none');
+    for (const selector of ['.pane-id', '.revision', '.updated']) {
+      expect(getComputedStyle(el.querySelector(selector) as Element).display)
+        .withContext(selector)
+        .toBe('none');
+    }
+
+    (el.querySelector('[data-overflow-trigger]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    for (const selector of ['.pane-id', '.revision', '.updated']) {
+      expect(getComputedStyle(el.querySelector(selector) as Element).display)
+        .withContext(selector)
+        .not.toBe('none');
+    }
+  });
+
+  it('collapses to the identity row while the terminal has focus, and comes back', async () => {
+    const el = await render(
+      [pane('pane-1'), pane('pane-2'), pane('pane-3', { tab: { id: 't2', name: 'review' } })],
+      'pane-1',
+      [tabOf('t1', 'build'), tabOf('t2', 'review')]
+    );
+    phone(el);
+
+    const header = el.querySelector('.detail-header') as HTMLElement;
+    const container = el.querySelector('.terminal-container') as HTMLElement;
+    const expanded = Math.round(header.getBoundingClientRect().height);
+
+    container.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    fixture.detectChanges();
+    expect(header.classList).toContain('collapsed');
+    // The navigator and meta rows are gone: their wrapper is what collapses,
+    // so measure the box rather than each child's own `display`.
+    for (const selector of ['[data-tab-chip]', 'app-card-switcher', '.meta-strip']) {
+      const box = (el.querySelector(selector) as HTMLElement).getBoundingClientRect();
+      expect(box.height).withContext(selector).toBe(0);
+    }
+    // The way out never collapses.
+    expect(getComputedStyle(el.querySelector('.back') as Element).display).not.toBe('none');
+    expect(Math.round(header.getBoundingClientRect().height)).toBeLessThan(expanded);
+
+    // A tap anywhere in the header brings it back, and moves no focus — the
+    // soft keyboard stays where it is.
+    header.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(header.classList).not.toContain('collapsed');
+    expect(Math.round(header.getBoundingClientRect().height)).toBe(expanded);
+  });
+
+  it('restores the header when the terminal loses focus, but not while focus stays inside it', async () => {
+    const el = await render([pane('pane-1'), pane('pane-2')]);
+    phone(el);
+
+    const header = el.querySelector('.detail-header') as HTMLElement;
+    const container = el.querySelector('.terminal-container') as HTMLElement;
+    const inner = document.createElement('textarea');
+    container.appendChild(inner);
+
+    container.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    fixture.detectChanges();
+    expect(header.classList).toContain('collapsed');
+
+    // xterm hands focus around inside its own box; that is not leaving it.
+    container.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: inner }));
+    fixture.detectChanges();
+    expect(header.classList).toContain('collapsed');
+
+    container.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: header }));
+    fixture.detectChanges();
+    expect(header.classList).not.toContain('collapsed');
+  });
+
+  it('never collapses while the operator has the overflow or the tab strip open', async () => {
+    const el = await render(
+      [pane('pane-1'), pane('pane-2'), pane('pane-3', { tab: { id: 't2', name: 'review' } })],
+      'pane-1',
+      [tabOf('t1', 'build'), tabOf('t2', 'review')]
+    );
+    phone(el);
+
+    const header = el.querySelector('.detail-header') as HTMLElement;
+    const container = el.querySelector('.terminal-container') as HTMLElement;
+
+    (el.querySelector('[data-overflow-trigger]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    container.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    fixture.detectChanges();
+    expect(header.classList).not.toContain('collapsed');
+  });
+
+  it('fits the phone row budget: three rows expanded, one collapsed', async () => {
+    const el = await render(
+      [pane('pane-1'), pane('pane-2'), pane('pane-3', { tab: { id: 't2', name: 'review' } })],
+      'pane-1',
+      [tabOf('t1', 'build'), tabOf('t2', 'review')]
+    );
+    phone(el);
+
+    const header = el.querySelector('.detail-header') as HTMLElement;
+    const height = Math.round(header.getBoundingClientRect().height);
+    expect(height).withContext(`header ${height}px`).toBeLessThanOrEqual(150);
+
+    el.querySelector('.terminal-container')!.dispatchEvent(
+      new FocusEvent('focusin', { bubbles: true })
+    );
+    fixture.detectChanges();
+    const collapsed = Math.round(header.getBoundingClientRect().height);
+    expect(collapsed).withContext(`collapsed ${collapsed}px`).toBeLessThanOrEqual(64);
   });
 
   // --- sibling derivation ------------------------------------------------

@@ -7,27 +7,105 @@
 }
 
 <div class="pane-detail" [style.--key-bar-reserve.px]="keyBarReserve()">
-  <header class="detail-header">
-    <a [routerLink]="backUrl" class="back">
-      <svg lucideArrowLeft class="icon" aria-hidden="true"></svg>
-      <span>{{ copy.nav.backToBoard }}</span>
-    </a>
+  <!--
+    Below `--breakpoint-mobile` this is three rows, not seven, and the two
+    rows that are not the identity row step aside while the terminal has
+    focus (openspec `trim-mobile-chrome`). All of that is `pane-detail.mobile.scss`
+    acting on these three classes; the DOM is the same at every width.
 
-    @if (sharesTab()) {
+    `pointerdown` is what brings a collapsed header back, and it is on the
+    header itself rather than on a control: every part of the row that stays
+    visible restores it, including the title, so there is nothing to hunt
+    for. The terminal losing focus restores it too. Neither depends on a
+    gesture or on hover, and both work with the soft keyboard up.
+  -->
+  <header
+    class="detail-header"
+    [class.collapsed]="headerCollapsed()"
+    [class.nav-open]="navOpen()"
+    [class.overflow-open]="overflowOpen()"
+    (pointerdown)="expandHeader($event)"
+  >
+    <!--
+      Row 1 below the breakpoint: the way out, the hop, what this card is,
+      and the overflow that holds what the row sheds. `display: contents`
+      above the breakpoint, so desktop still lays these out as the direct
+      children of the header they have always been.
+    -->
+    <div class="identity">
+      <a [routerLink]="backUrl" class="back">
+        <svg lucideArrowLeft class="icon" aria-hidden="true"></svg>
+        <span class="back-label">{{ copy.nav.backToBoard }}</span>
+      </a>
+
+      @if (sharesTab()) {
+        <!--
+          The pointer affordance for `prefix + o`, on the same shared handler.
+          It hops; it never opens or focuses the strip below.
+        -->
+        <button
+          type="button"
+          class="next-card"
+          [attr.aria-label]="copy.nav.nextCard"
+          [title]="copy.nav.nextCard"
+          (click)="goToNextCard()"
+        >
+          <svg lucideSquareSplitHorizontal class="icon" aria-hidden="true"></svg>
+        </button>
+      }
       <!--
-        The pointer affordance for `prefix + o`, on the same shared handler.
-        It hops; it never opens or focuses the strip below.
+        The title and the control that renames it are one unit: the pencil
+        sits at the title's trailing edge, so what it acts on is never
+        ambiguous. Below the breakpoint the pencil waits behind the overflow
+        and comes back to that same edge when it opens — the pair is never
+        split, it is only ever both present or both away.
+      -->
+      <div class="title-row">
+        <h1 class="pane-title" [title]="title()">{{ title() }}</h1>
+
+        @if (paneRenameAvailable()) {
+          <!--
+            Visible on first render, never a hover-revealed pencil (see
+            docs/UX-GUIDELINES.md, "Visible affordances"). Icon-only and
+            borderless: the title is the subject, and a bordered button beside
+            it reads as the louder element of the two. The name lives in
+            `aria-label` and in the tooltip, so nothing is lost to a reader or
+            to the keyboard.
+          -->
+          <button
+            type="button"
+            class="rename-control"
+            [attr.aria-label]="copy.card.renameAction"
+            [title]="copy.card.renameAction"
+            (click)="showRename.set(true)"
+          >
+            <svg lucidePencil class="icon" aria-hidden="true"></svg>
+          </button>
+        }
+      </div>
+
+      <span class="host-seal">{{ host() }}</span>
+
+      <!--
+        Phone only (`display: none` above the breakpoint). The rows the phone
+        layout sheds — workspace / tab, checkout path, pane id, revision,
+        last-poll elapsed, the stale marker — come back under the meta row from
+        here. Visible on first render, never hover-revealed, and the same
+        `LucideMoreHorizontal` control every other overflow in the app uses.
       -->
       <button
         type="button"
-        class="next-card"
-        [attr.aria-label]="copy.nav.nextCard"
-        [title]="copy.nav.nextCard"
-        (click)="goToNextCard()"
+        class="overflow-trigger"
+        data-overflow-trigger
+        [attr.aria-expanded]="overflowOpen()"
+        aria-controls="pane-meta"
+        [attr.aria-label]="copy.nav.moreActions"
+        [title]="copy.nav.moreActions"
+        (click)="overflowOpen.set(!overflowOpen())"
       >
-        <svg lucideSquareSplitHorizontal class="icon" aria-hidden="true"></svg>
+        <svg lucideMoreHorizontal class="icon" aria-hidden="true"></svg>
       </button>
-    }
+    </div>
 
     <!-- workspace / tab. The host is the hanko seal's job, not the breadcrumb's. -->
     <p class="breadcrumb">
@@ -37,56 +115,54 @@
     </p>
 
     <!--
-      The title and the control that renames it are one unit: the pencil sits
-      at the title's trailing edge, so what it acts on is never ambiguous.
-      The row wraps as a pair, which is what keeps them together at phone
-      width too.
+      Row 2 below the breakpoint: herdr's two levels on one row, the tab as
+      a disclosure over the strip beneath it. `display: contents` above the
+      breakpoint, where the strip sits above the switcher as it always has.
     -->
-    <div class="title-row">
-      <h1 class="pane-title" [title]="title()">{{ title() }}</h1>
-
-      @if (paneRenameAvailable()) {
+    <div class="navigator">
+      @if (hasTabs()) {
         <!--
-          Visible on first render, never a hover-revealed pencil (see
-          docs/UX-GUIDELINES.md, "Visible affordances"). Icon-only and
-          borderless: the title is the subject, and a bordered button beside
-          it reads as the louder element of the two. The name lives in
-          `aria-label` and in the tooltip, so nothing is lost to a reader or
-          to the keyboard.
+          Phone only. The tab level and the pane level share one row there:
+          this control names the current tab and discloses the strip below it,
+          which is the SAME `app-tab-strip` desktop shows above the switcher.
+          Above the breakpoint the chip is not displayed and the strip is
+          always open, so both widths draw herdr's two levels with one widget.
         -->
         <button
           type="button"
-          class="rename-control"
-          [attr.aria-label]="copy.card.renameAction"
-          [title]="copy.card.renameAction"
-          (click)="showRename.set(true)"
+          class="tab-chip"
+          data-tab-chip
+          [attr.aria-expanded]="navOpen()"
+          aria-controls="pane-tab-strip"
+          [attr.aria-label]="copy.nav.tabStrip"
+          [title]="copy.nav.tabStrip"
+          (click)="navOpen.set(!navOpen())"
         >
-          <svg lucidePencil class="icon" aria-hidden="true"></svg>
+          <svg lucideChevronRight class="icon" [class.open]="navOpen()" aria-hidden="true"></svg>
+          <span class="tab-chip-name">{{ tabName() }}</span>
+          <span class="tab-chip-count">{{ tabEntries().length }}</span>
         </button>
+      }
+      @if (sharesTab()) {
+        <app-card-switcher
+          class="switcher-slot"
+          [siblings]="siblings()"
+          [currentId]="id()"
+          (escaped)="focusTerminal()"
+        />
       }
     </div>
 
-    <span class="host-seal">{{ host() }}</span>
-
     <!--
       Two levels, in herdr's order: the workspace's tabs, then the panes of
-      the selected tab. The pane strip below is the SAME widget one level
-      down, subordinate by scale and indent rather than by different chrome.
+      the selected tab. Above the breakpoint this strip sits above the
+      switcher; below it, it is what the navigator's chip discloses.
     -->
     @if (hasTabs()) {
-      <app-tab-strip class="tab-slot" [entries]="tabEntries()" />
+      <app-tab-strip id="pane-tab-strip" class="tab-slot" [entries]="tabEntries()" />
     }
 
-    @if (sharesTab()) {
-      <app-card-switcher
-        class="switcher-slot"
-        [siblings]="siblings()"
-        [currentId]="id()"
-        (escaped)="focusTerminal()"
-      />
-    }
-
-    <div class="meta-strip">
+    <div class="meta-strip" id="pane-meta">
       <span class="status" [class]="statusKey()">
         <span class="status-dot" [class]="statusKey()" aria-hidden="true"></span>
         {{ statusLabel() }}
@@ -156,79 +232,87 @@
 
   <div class="detail-body">
     <div class="split" #split [attr.data-axis]="splitAxis()" [class.dragging]="splitDragging()">
-    <div class="terminal-wrap" [style.flex-grow]="filePanelOpen() ? splitRatio() : 1">
-      <div
-        class="terminal-container"
-        [class.inert]="viewState() === 'gone'"
-        #terminalContainer
-        role="group"
-        [attr.aria-label]="title()"
-      ></div>
+      <div class="terminal-wrap" [style.flex-grow]="filePanelOpen() ? splitRatio() : 1">
+        <!--
+        `focusin` / `focusout` on the wrapper, not on xterm's own textarea:
+        the textarea is created and replaced by xterm, and the wrapper is
+        this view's own element. `focusout` ignores a move that stays inside
+        the wrapper, or the header would flicker as xterm hands focus around.
+      -->
+        <div
+          class="terminal-container"
+          [class.inert]="viewState() === 'gone'"
+          #terminalContainer
+          role="group"
+          [attr.aria-label]="title()"
+          (focusin)="terminalFocused.set(true)"
+          (focusout)="onTerminalFocusOut($event)"
+        ></div>
 
-      <div class="terminal-status" aria-live="polite">
-        @switch (viewState()) {
-          @case ('loading') {
-            <div class="terminal-state terminal-loading">
-              <span class="pulse-dot" aria-hidden="true"></span>
-              <span>{{ copy.loading.pane }}</span>
-            </div>
-          }
-          @case ('failed') {
-            <div class="terminal-state terminal-failed">
-              <p class="state-line">
-                <svg lucideTriangleAlert class="icon" aria-hidden="true"></svg>
-                {{ failureReason() }}
-              </p>
-              <div class="state-actions">
-                <button type="button" class="retry" (click)="retry()">
-                  <svg lucideRefreshCw class="icon" aria-hidden="true"></svg>
-                  {{ copy.loading.retry }}
-                </button>
-                <a [routerLink]="backUrl" class="state-back">{{ copy.nav.backToBoard }}</a>
+        <div class="terminal-status" aria-live="polite">
+          @switch (viewState()) {
+            @case ('loading') {
+              <div class="terminal-state terminal-loading">
+                <span class="pulse-dot" aria-hidden="true"></span>
+                <span>{{ copy.loading.pane }}</span>
               </div>
-            </div>
-          }
-          @case ('unavailable') {
-            <div class="terminal-state terminal-unavailable">
-              <p class="state-line">
-                <svg lucideUnplug class="icon" aria-hidden="true"></svg>
-                {{ copy.state.unavailable }}
-              </p>
-              <div class="state-actions">
-                <a [routerLink]="backUrl" class="state-back">{{ copy.nav.backToBoard }}</a>
+            }
+            @case ('failed') {
+              <div class="terminal-state terminal-failed">
+                <p class="state-line">
+                  <svg lucideTriangleAlert class="icon" aria-hidden="true"></svg>
+                  {{ failureReason() }}
+                </p>
+                <div class="state-actions">
+                  <button type="button" class="retry" (click)="retry()">
+                    <svg lucideRefreshCw class="icon" aria-hidden="true"></svg>
+                    {{ copy.loading.retry }}
+                  </button>
+                  <a [routerLink]="backUrl" class="state-back">{{ copy.nav.backToBoard }}</a>
+                </div>
               </div>
-            </div>
+            }
+            @case ('unavailable') {
+              <div class="terminal-state terminal-unavailable">
+                <p class="state-line">
+                  <svg lucideUnplug class="icon" aria-hidden="true"></svg>
+                  {{ copy.state.unavailable }}
+                </p>
+                <div class="state-actions">
+                  <a [routerLink]="backUrl" class="state-back">{{ copy.nav.backToBoard }}</a>
+                </div>
+              </div>
+            }
+            @case ('empty') {
+              <div class="terminal-state terminal-empty">
+                <p class="state-line">{{ copy.emptyState.hostEmpty }}</p>
+              </div>
+            }
           }
-          @case ('empty') {
-            <div class="terminal-state terminal-empty">
-              <p class="state-line">{{ copy.emptyState.hostEmpty }}</p>
-            </div>
-          }
-        }
+        </div>
       </div>
-    </div>
 
-    @if (filePanelOpen()) {
-      <app-split-handle
-        [axis]="splitAxis()"
-        [percent]="splitPercent()"
-        (pressed)="onSplitterDown()"
-        (moved)="onSplitterMove($event)"
-        (released)="onSplitterUp()"
-        (stepped)="onSplitterStep($event)"
-      />
+      @if (filePanelOpen()) {
+        <app-split-handle
+          [axis]="splitAxis()"
+          [percent]="splitPercent()"
+          (pressed)="onSplitterDown()"
+          (moved)="onSplitterMove($event)"
+          (released)="onSplitterUp()"
+          (stepped)="onSplitterStep($event)"
+        />
 
-      <app-file-panel
-        id="file-panel"
-        class="file-panel"
-        [style.flex-grow]="1 - splitRatio()"
-        [attr.aria-label]="copy.files.label"
-        [host]="host()"
-        [paneId]="id()"
-        [project]="project()"
-        [paused]="filePanelPaused()"
-      />
-    }
+        <app-file-panel
+          id="file-panel"
+          class="file-panel"
+          [style.flex-grow]="1 - splitRatio()"
+          [attr.aria-label]="copy.files.label"
+          [host]="host()"
+          [paneId]="id()"
+          [project]="project()"
+          [paused]="filePanelPaused()"
+        />
+      }
     </div>
 
     <!--

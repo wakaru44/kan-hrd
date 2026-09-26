@@ -67,6 +67,12 @@ export const COPY = {
     /** Opens the herdr destinations below. `park in…` is a different operation and a different menu. */
     move: 'move to…',
     moveExistingTab: 'another tab',
+    /**
+     * A pane lives in a tab, so this is herdr's `new_tab` carrying the
+     * chosen `workspace_id` — a tab is created for the pane there. The word
+     * promises no more than what the operator picks: a workspace.
+     */
+    moveExistingWorkspace: 'another workspace',
     moveNewTab: 'a new tab',
     moveNewWorkspace: 'a new workspace',
     /** Opens the list of parked columns, plus `park.newColumn`. The ellipsis is the promise of that list. */

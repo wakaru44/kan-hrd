@@ -128,4 +128,31 @@ describe('destinationsFor', () => {
     expect(tabs.some((d) => d.tabId === 't1')).toBeFalse();
     expect(tabs.length).toBe(2);
   });
+
+  /**
+   * The workspace a pane is already in is `{type:'new_tab'}` with no
+   * `workspace_id` — the request `a new tab` sends one line below it in the
+   * same menu (openspec `add-move-to-existing-destination`).
+   */
+  it('leaves out the workspace a pane is already in, and only at workspace level', () => {
+    const exclude = { host: 'laptop', workspaceId: 'w1' };
+    const workspaces = destinationsFor(sources(BOTH_CAN_CREATE), {
+      level: 'workspace',
+      capability: 'paneCreate',
+      excludeWorkspace: exclude,
+    });
+    expect(workspaces.map((d) => d.workspaceId)).toEqual(['w2']);
+    expect(workspaces[0].label)
+      .withContext('one host is left offering something, so its name is not printed')
+      .toBe('herdr');
+
+    const tabs = destinationsFor(sources(BOTH_CAN_CREATE), {
+      level: 'tab',
+      capability: 'paneCreate',
+      excludeWorkspace: exclude,
+    });
+    expect(tabs.map((d) => d.tabId))
+      .withContext("the pane's own workspace still holds tabs worth moving into")
+      .toEqual(['t3', 't2', 't1']);
+  });
 });

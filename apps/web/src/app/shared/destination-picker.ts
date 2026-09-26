@@ -54,6 +54,14 @@ export interface DestinationQuery {
    * cannot do anything should not be offered.
    */
   excludeTab?: { host: string; tabId: string } | null;
+  /**
+   * A workspace to leave out — the pane's own, for a move into an existing
+   * workspace. That move is `{type:'new_tab', workspace_id}`, and with the
+   * pane's own workspace it is `{type:'new_tab'}`, which the same menu
+   * already offers one line below. Only `workspace` level reads it: the
+   * pane's own workspace still holds tabs worth moving into.
+   */
+  excludeWorkspace?: { host: string; workspaceId: string } | null;
 }
 
 /**
@@ -97,14 +105,22 @@ export function destinationsFor(
   const multiHost = new Set(workspaces.map((w) => w.host)).size > 1;
 
   if (query.level === 'workspace') {
-    return workspaces.map((workspace) => ({
+    const skip = query.excludeWorkspace ?? null;
+    const offered = skip
+      ? workspaces.filter((w) => !(w.host === skip.host && w.id === skip.workspaceId))
+      : workspaces;
+    // Qualified by what is on offer, not by what was filtered out: a host
+    // whose only workspace was the excluded one no longer needs its name
+    // printed on every row.
+    const multi = new Set(offered.map((w) => w.host)).size > 1;
+    return offered.map((workspace) => ({
       host: workspace.host,
       workspaceId: workspace.id,
       workspaceName: workspace.name,
       tabId: null,
       tabName: null,
       targetPaneId: null,
-      label: multiHost ? `${workspace.host} / ${workspace.name}` : workspace.name,
+      label: multi ? `${workspace.host} / ${workspace.name}` : workspace.name,
     }));
   }
 
@@ -160,6 +176,7 @@ export class DestinationPicker {
   readonly level = input.required<DestinationLevel>();
   readonly capability = input.required<DestinationCapability>();
   readonly excludeTab = input<{ host: string; tabId: string } | null>(null);
+  readonly excludeWorkspace = input<{ host: string; workspaceId: string } | null>(null);
 
   readonly chosen = output<Destination>();
 
@@ -177,7 +194,12 @@ export class DestinationPicker {
         panes: this.store.panesSignal().values(),
         capabilities: this.store.capabilitiesSignal(),
       },
-      { level: this.level(), capability: this.capability(), excludeTab: this.excludeTab() }
+      {
+        level: this.level(),
+        capability: this.capability(),
+        excludeTab: this.excludeTab(),
+        excludeWorkspace: this.excludeWorkspace(),
+      }
     )
   );
 

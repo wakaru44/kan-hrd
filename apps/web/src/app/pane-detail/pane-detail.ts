@@ -30,6 +30,7 @@ import { KeyboardService } from '../state/keyboard.service';
 import {
   LucideArrowLeft,
   LucideChevronRight,
+  LucideMoreHorizontal,
   LucidePencil,
   LucideSquareSplitHorizontal,
   LucideRefreshCw,
@@ -109,6 +110,7 @@ export function nextSiblingCard(siblings: readonly Pane[], currentId: string): P
     SplitHandle,
     LucideArrowLeft,
     LucideChevronRight,
+    LucideMoreHorizontal,
     LucidePencil,
     LucideSquareSplitHorizontal,
     LucideRefreshCw,
@@ -117,7 +119,10 @@ export function nextSiblingCard(siblings: readonly Pane[], currentId: string): P
     LucideUnplug,
   ],
   templateUrl: './pane-detail.html',
-  styleUrl: './pane-detail.scss',
+  // Two stylesheets, one component: the phone layout is a second file so that
+  // every rule it adds is provably inside `@media (max-width: 900px)`, and so
+  // that neither file crosses the per-file `anyComponentStyle` budget.
+  styleUrls: ['./pane-detail.scss', './pane-detail.mobile.scss'],
 })
 export class PaneDetail implements AfterViewInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
@@ -464,6 +469,81 @@ export class PaneDetail implements AfterViewInit, OnDestroy {
     if (next) {
       void this.router.navigate(['/pane', next.host, next.id]);
     }
+  }
+
+  // --- the phone header ---------------------------------------------------
+  //
+  // Below `--breakpoint-mobile` the header is three rows (identity,
+  // navigator, meta) rather than seven, and the two rows that are not the
+  // identity row step aside while the terminal has focus. The shapes are all
+  // here; `pane-detail.mobile.scss` is what makes them mean anything, and it
+  // is entirely inside the one media query, so none of this reaches desktop.
+
+  /** The tab strip, disclosed from the navigator row's chip. Phone only. */
+  protected readonly navOpen = signal(false);
+
+  /**
+   * The rows the phone layout sheds — workspace / tab, checkout path, pane
+   * id, revision, last-poll elapsed, the stale marker. Phone only, and open
+   * is a visible state of a visible trigger, never a hover.
+   */
+  protected readonly overflowOpen = signal(false);
+
+  /**
+   * True while the operator is in the terminal. `focusin` is the honest
+   * signal, but a tap on the header may have kept xterm's focus on purpose
+   * (see `expandHeader`), in which case tapping back into the terminal moves
+   * no focus and fires no `focusin` — so the terminal's own `pointerdown`
+   * sets it too. Either way, the last place the operator touched wins.
+   */
+  protected readonly terminalFocused = signal(false);
+
+  /**
+   * The header gives its second and third rows to the terminal while the
+   * operator is typing into it — which on a phone is also when the soft
+   * keyboard has taken half the screen.
+   *
+   * It is never collapsed while the overflow or the tab strip is open: the
+   * operator asked for those rows, and having them vanish the moment focus
+   * returned to the terminal would be the control doing nothing.
+   */
+  protected readonly headerCollapsed = computed(
+    () => this.terminalFocused() && !this.overflowOpen() && !this.navOpen()
+  );
+
+  /**
+   * Bring a collapsed header back. Bound to `pointerdown` on the header, so a
+   * tap anywhere in the row that stays visible restores the other two — the
+   * title included, which means there is no control to hunt for. It runs
+   * before the tap's own click, so a tap on the overflow trigger expands the
+   * header and opens the overflow in one go rather than needing two.
+   *
+   * A touch on something that is not itself a control has its default
+   * prevented, which is what keeps the terminal focused — and on iOS that is
+   * what keeps the soft keyboard up. Without it the tap blurs xterm's
+   * textarea, the keyboard drops, and the operator has to summon it again to
+   * carry on typing: the control would cost more than it gave.
+   *
+   * A MOUSE is left alone, so selecting the title with a cursor still works
+   * exactly as it does today. Nothing about desktop changes here.
+   */
+  protected expandHeader(event: PointerEvent): void {
+    const target = event.target as HTMLElement | null;
+    const onAControl = target?.closest('a[href], button, input, select, textarea') !== null;
+    if (event.pointerType !== 'mouse' && !onAControl && this.terminalFocused()) {
+      event.preventDefault();
+    }
+    this.terminalFocused.set(false);
+  }
+
+  /** Focus moving within the terminal box is not focus leaving it. */
+  protected onTerminalFocusOut(event: FocusEvent): void {
+    const box = event.currentTarget as HTMLElement;
+    const next = event.relatedTarget;
+    if (next instanceof Node && box.contains(next)) {
+      return;
+    }
+    this.terminalFocused.set(false);
   }
 
   /**

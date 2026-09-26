@@ -148,7 +148,7 @@ User runs herdr on N machines (currently 3). One UI session manages all of them.
 
 **Topology: hub bridge + SSH-forwarded sockets.** A single bridge process (placement-agnostic — laptop or cloud) exposes one HTTP+WS endpoint to the browser. Each remote herdr socket is made locally-reachable via a forward or reverse SSH tunnel; the bridge treats every host as "a local Unix-socket path" with no knowledge of tunnel direction. Tunnel lifecycle lives outside the bridge (autossh / systemd).
 
-Bridge config is a flat host list — `{name, socket_path}` — with an offline indicator per host when a socket read fails.
+Bridge config is a flat host list — `{name, socket}` — with an offline indicator per host when a socket read fails.
 
 Rejected: A (bridge per host, multi-endpoint SPA) — 3 endpoints to secure; C (piggyback on herdr's own SSH remote) — that path speaks the private TUI wire, not the JSON API, and would couple the bridge to `PROTOCOL_VERSION`.
 
@@ -195,7 +195,7 @@ Standalone binary (pkg/bun compile) deferred until Node install friction becomes
 
 ### Bridge state
 
-**Stateless proxy.** Configuration only: a static host-list file (`{name, socket_path}` per host). No database, no persisted user data. Restarts are free — reconnect re-fetches snapshots from herdr.
+**Stateless proxy.** Configuration only: a static host-list file (`{name, socket}` per host). No database, no persisted user data. Restarts are free — reconnect re-fetches snapshots from herdr.
 
 UI preferences and (future) kanban tag overlays live in browser `localStorage`. If cross-device sync becomes a concrete need, the bridge grows a small persistent store (SQLite or file-based) — not before.
 

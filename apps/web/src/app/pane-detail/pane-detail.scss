@@ -57,10 +57,10 @@
    * affordance for `prefix + o`. Order 0 keeps it in the back control's
    * group, after it — `.back` stays the first focusable element.
    */
-  .next-card {
+  .next-card,
+  .overflow-trigger {
     order: 0;
     flex: none;
-    display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: var(--sp-1);
@@ -75,6 +75,32 @@
       color: var(--ink);
       border-color: var(--ochre-line);
     }
+  }
+
+  .next-card {
+    display: inline-flex;
+  }
+
+  /*
+   * Phone-only chrome, declared here only so it is absent everywhere else:
+   * `pane-detail.mobile.scss` is the only file that displays either, and it
+   * is entirely inside `@media (max-width: 900px)`. The trigger borrows
+   * `.next-card`'s box, which is why this rule sits after it.
+   */
+  .overflow-trigger,
+  .tab-chip {
+    display: none;
+  }
+
+  /*
+   * The two row groupings the phone layout needs. `display: contents` here
+   * means the header's direct children at this width are exactly what they
+   * have always been — same `order`, same flex line breaks, same rendering —
+   * and `pane-detail.mobile.scss` turns each into a real row.
+   */
+  .identity,
+  .navigator {
+    display: contents;
   }
 
   /* workspace / tab. Truncates itself before it ever truncates the title. */
@@ -554,41 +580,6 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-  }
-}
-
-@media (max-width: 900px) {
-  /* Full-screen terminal; the header stays put so the back control is
-     visible without scrolling. */
-  .pane-detail {
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .detail-header {
-    padding: var(--sp-2) var(--sp-3);
-  }
-
-  /* Narrower gutter at phone width: the terminal keeps its columns. */
-  .detail-body {
-    padding: var(--sp-2);
-    padding-bottom: calc(var(--sp-2) + var(--key-bar-reserve));
-  }
-
-  .detail-header .title-row {
-    flex: 1 0 100%;
-    order: 2;
-  }
-
-  /*
-   * The breadcrumb collapses to the tab name alone, so the title keeps its
-   * row. The switcher still renders, at every width — it is a navigator
-   * between routes, one terminal at a time (maintainer decision D1). Its
-   * own `overflow-x` is on the strip, so the page never scrolls sideways.
-   */
-  .detail-header .crumb-workspace,
-  .detail-header .crumb-sep {
-    display: none;
   }
 }
 

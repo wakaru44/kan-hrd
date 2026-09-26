@@ -153,9 +153,15 @@ follows these rules:
   colleague's machine when they meant to tidy their own board.
 - **The move control is rendered only where `capabilities.paneMove` is
   true** — not disabled, not hidden behind a failure.
-- **Its destinations are herdr's three**, the `PaneMoveDestination` union:
-  another tab, a new tab, a new workspace. A parked column is never among
-  them.
+- **Its destinations are four**, over herdr's three-member
+  `PaneMoveDestination` union: another tab, another workspace, a new tab,
+  a new workspace. A pane lives in a tab, so herdr has no "into an
+  existing workspace" destination — `another workspace` sends
+  `new_tab` with that workspace's id, which is what lands a pane in a
+  named workspace without naming one of its tabs. A parked column is
+  never among them.
+- **The pane's own workspace is not offered either**, for the same
+  reason its own tab is not: moving there is `a new tab`, one line below.
 - **The tab the pane is already in is not offered.** herdr answers that
   with `changed: false, reason: "same_tab"`, and an option that cannot do
   anything is not an option.
@@ -554,10 +560,21 @@ What this model does not do:
 - The card switcher, rendered when the tab holds more than one card, is
   a horizontally scrolling strip: `overflow-x` sits on the strip and
   never on the page, and every entry meets `--touch-target-min`.
-- Header at 390px: a visible back control (`LucideArrowLeft` +
-  `back to the board`) as the first focusable element, then the title,
-  then the host seal. The metadata strip (pane id, revision, live state)
-  wraps beneath rather than truncating the title.
+- Header at 390px: three rows. **Identity** — a visible back control
+  (`LucideArrowLeft`, its icon alone, named `back to the board` for
+  assistive tech) as the first focusable element, then next-card, the
+  title, the host seal, and an overflow trigger. **Navigator** — the tab
+  as a disclosure chip with that tab's cards beside it. **Meta** — the
+  live state and the files toggle, on one line. The breadcrumb, checkout
+  path, pane id, revision, last-poll elapsed and the rename control sit
+  one tap away under the overflow; the rename pencil returns to the
+  title's trailing edge while it is open, so the title and its control
+  stay one unit.
+- While the terminal has focus the header keeps only its identity row.
+  A press anywhere in the header restores the other two, and a touch
+  press on something that is not a control prevents its own default so
+  the terminal keeps focus and the soft keyboard stays up. The header
+  does not collapse while the overflow or the tab disclosure is open.
 - The terminal fills the remaining height and owns horizontal overflow
   internally. It never causes page-level horizontal scroll.
 - While the terminal has focus, unmodified Escape / `?` / arrows go to

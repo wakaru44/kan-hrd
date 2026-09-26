@@ -96,17 +96,56 @@ The SPA's visual layer is governed by three design docs, binding on any change t
 
 ## Getting started
 
-You need a running herdr on the same machine, Node with `pnpm`, and Git LFS (screenshots live in LFS).
+From nothing to a board with your own herdr on it. Five minutes, one machine.
+
+**What you need first:** Node 22 with `pnpm`, Git LFS (the screenshots live in LFS), and herdr. `make install-herdr` runs herdr's official installer if you do not have it, and leaves it alone if you do.
+
+**1. Clone, with LFS.**
 
 ```bash
-git lfs install     # once per machine; `git lfs pull` if you cloned first
-make install        # pnpm install --frozen-lockfile
-make run            # build, then serve on http://127.0.0.1:5173
+git lfs install                 # once per machine
+git clone <this-repo> kanhrd
+cd kanhrd
 ```
 
-That points at `~/.config/herdr/herdr.sock` with no configuration. To add hosts, change the port, or move the bind address, drop a `kanhrd.config.yaml` next to where you start the bridge — `hosts:` is the supported way to add a second herdr.
+If you cloned before installing LFS, `git lfs pull` fills the screenshots in.
 
-For hot reload, run `make dev-bridge` and `make dev-web` in two terminals. `make help` lists every target; `make docker-up` runs the bridge in a container, loopback-bound by default.
+**2. Install.**
+
+```bash
+make install                    # pnpm install --frozen-lockfile
+```
+
+`make` on its own prints every target, grouped. `make hooks` installs the pre-commit gate, and is only worth it if you are going to change the code.
+
+**3. Have herdr running.** The bridge is a client of herdr's JSON socket — with no herdr there is nothing to put on the board. `herdr` on its own launches or attaches to the persistent session, and `herdr status server` says whether one is up. Its socket lands at `~/.config/herdr/herdr.sock`, which is where the bridge looks with no configuration at all.
+
+**4. Run the bridge.**
+
+```bash
+make run                        # builds, then serves on http://127.0.0.1:5173
+```
+
+It stays in the foreground and streams its log. `make stop` ends it from another terminal, `make logs` tails it, `make restart` rebuilds and runs it again.
+
+**5. Open `http://127.0.0.1:5173`.** Every herdr pane is a card, grouped into status columns. Click one for its live terminal. If the board is empty, herdr has no panes yet — open one in herdr and it appears.
+
+Check the bridge's own view of things at any point:
+
+```bash
+curl -s http://127.0.0.1:5173/api/hosts
+# {"hosts":[{"name":"local","connected":true}]}
+```
+
+`connected: false` comes with a `last_error` naming the socket it could not reach.
+
+### Where to go next
+
+- **A second machine's herdr on the same board.** Forward its socket to yours and name it in the config: [`docs/how-to/remote-herdr-host.md`](docs/how-to/remote-herdr-host.md).
+- **Change the port, the bind address, or the host list.** Copy [`kanhrd.config.example.yaml`](kanhrd.config.example.yaml) to `kanhrd.config.yaml` in the directory you start the bridge from — the repo root, with `make run`.
+- **Reach the board from your phone.** `make run-tailscale-serve` keeps the bridge on loopback and lets Tailscale front it with HTTPS. Read [`docs/OPERATING.md`](docs/OPERATING.md) before any other way of exposing it.
+- **Use the board properly.** [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) — the chords, the scoping, the columns of your own.
+- **Work on kanhrd.** `make dev-bridge` and `make dev-web` in two terminals for hot reload; [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the rest. `make docker-up` runs the bridge in a container instead, loopback-bound by default.
 
 ## Roadmap
 

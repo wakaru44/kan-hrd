@@ -8,9 +8,16 @@ gives you and when to open it.
 
 You want kanhrd running on a machine.
 
+- [README.md](../README.md) § Getting started — clone to a board with your
+  own herdr on it. The first thing to follow; everything below assumes it
+  worked.
 - [OPERATING.md](./OPERATING.md) — the three deployment shapes (laptop-only,
   cloud hub behind oauth2-proxy, mixed hub plus reverse-tunnelled laptop),
   with the trust boundary each one buys you. Start here before you deploy.
+- [how-to/remote-herdr-host.md](./how-to/remote-herdr-host.md) — the
+  step-by-step for recipe 5: landing a remote machine's herdr socket on
+  your own with `ssh -L`, naming it in the config, and telling the three
+  tunnel failures apart. Open it the first time a host stays grey.
 - [how-to/oauth-proxy.md](./how-to/oauth-proxy.md) — the step-by-step for
   recipe 2: putting a cloud VM behind oauth2-proxy, including the
   troubleshooting you will need when the callback URL is wrong.

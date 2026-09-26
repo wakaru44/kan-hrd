@@ -153,6 +153,23 @@
                   (chosen)="moveToTab($event)"
                 />
               }
+              <button
+                type="button"
+                role="menuitem"
+                class="move-existing-workspace"
+                [attr.aria-expanded]="moveWorkspaceListOpen()"
+                (click)="toggleMoveWorkspaceList()"
+              >
+                {{ action.moveExistingWorkspace }}
+              </button>
+              @if (moveWorkspaceListOpen()) {
+                <app-destination-picker
+                  level="workspace"
+                  capability="paneMove"
+                  [excludeWorkspace]="ownWorkspace()"
+                  (chosen)="moveToWorkspace($event)"
+                />
+              }
               <button type="button" role="menuitem" (click)="moveToNewTab()">
                 {{ action.moveNewTab }}
               </button>
@@ -276,8 +293,10 @@
             }
             <!--
               Moving: herdr's own operation, offered only where the host
-              says `pane.move` will succeed. Its three destinations are the
-              three herdr's `PaneMoveDestination` union has, and no parked
+              says `pane.move` will succeed. Its four destinations are what
+              herdr's `PaneMoveDestination` union can express — an existing
+              workspace among them, which herdr spells as a new tab carrying
+              that workspace's id. No parked
               column appears among them — `park in…` below is a different
               operation with a different blast radius, and they never share
               a menu.
@@ -309,6 +328,23 @@
                       capability="paneMove"
                       [excludeTab]="ownTab()"
                       (chosen)="moveToTab($event)"
+                    />
+                  }
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="move-existing-workspace"
+                    [attr.aria-expanded]="moveWorkspaceListOpen()"
+                    (click)="toggleMoveWorkspaceList()"
+                  >
+                    {{ action.moveExistingWorkspace }}
+                  </button>
+                  @if (moveWorkspaceListOpen()) {
+                    <app-destination-picker
+                      level="workspace"
+                      capability="paneMove"
+                      [excludeWorkspace]="ownWorkspace()"
+                      (chosen)="moveToWorkspace($event)"
                     />
                   }
                   <button type="button" role="menuitem" (click)="moveToNewTab()">

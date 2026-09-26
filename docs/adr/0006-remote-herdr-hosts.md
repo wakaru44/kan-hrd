@@ -1,6 +1,6 @@
 # ADR-0006: Remote herdr hosts via operator-managed SSH forwards
 
-Status: Proposed
+Status: Accepted
 Date: 2026-09-10
 
 ## Context
@@ -102,17 +102,42 @@ Four further behaviours were verified, not assumed:
 Confirm ADR-0001's transport unchanged and make the operator path real:
 remote hosts are reached by an **operator-managed persistent SSH forward
 that lands a Unix socket file on the bridge host**. The bridge does not
-spawn, supervise, or know about `ssh`. `HostConfig` stays
-`{ name, socket }` — a remote host is a local socket path like any other.
+spawn, supervise, or know about `ssh`. To the bridge a remote host is a local
+socket path like any other: it reads `socket` and calls `connect()`.
 
-The work is documentation and ergonomics, not transport:
+The work is documentation and ergonomics, not transport. kanhrd ships the
+ergonomics half itself, as an operator-session command — `kanhrd tunnel up`,
+`kanhrd tunnel down`, `kanhrd tunnel status`, with `kanhrd tunnel up --all`
+reading the bridge config and raising one forward per configured remote host:
 
+- The command runs the native `ssh` binary in the *operator's* session, not
+  inside the bridge. Keys, `~/.ssh/config`, `known_hosts`, `ProxyJump` and
+  the agent stay with the user's ssh client; kanhrd builds argv and
+  supervises a process. It always passes `-o StreamLocalBindUnlink=yes`
+  (a dead tunnel's leftover socket file otherwise makes the next forward fail
+  to bind) and `-o BatchMode=yes`, and never relaxes
+  `StrictHostKeyChecking`. This is the ergonomics of alternative C without
+  its credential posture: the bridge still spawns nothing and still holds
+  nothing. `HostConfig` may carry what the command needs to know — an ssh
+  target and the remote socket path — and the bridge keeps ignoring it,
+  reading `socket` and calling `connect()` as before.
+- `kanhrd tunnel status` is where the three SSH failure modes below become
+  tellable apart, from the operator's side where the tunnel actually is.
+- The session is the seam for anything else kanhrd needs from the far
+  machine, on the same terms: a second `-L` forward and, where one is needed,
+  a kanhrd process the session starts there. Reading a remote pane's files
+  works this way — a read-only kanhrd reader on the host, behind its own
+  forwarded socket — because a remote checkout's symlinks only resolve on the
+  machine holding them, and because the bridge must stay a `connect()` away
+  from everything. What the bridge learns is one more socket path; what it
+  holds is still nothing.
 - Ship a committed `kanhrd.config.example.yaml` with a local host and a
   commented remote host.
 - Add an OPERATING.md recipe for the forward direction (laptop bridge →
-  `alpaca01`), the mirror of the existing §3 reverse recipe, including
-  `StreamLocalBindUnlink=yes` and a keepalive supervisor
-  (`autossh`/systemd user unit on Linux, `launchd` KeepAlive on macOS).
+  `alpaca01`), the mirror of the existing §3 reverse recipe, wrapping
+  `kanhrd tunnel up` in a keepalive supervisor (systemd user unit on Linux,
+  `launchd` KeepAlive on macOS). A containerized bridge runs no tunnel: it
+  gets a mounted `~/.ssh` and `SSH_AUTH_SOCK`, and that case is documented.
 - Fix the `socket_path` → `socket` drift in `docs/OPERATING.md` and
   `docs/CONTEXT.md`.
 - Surface the "how to add a host" snippet from a route the operator can
@@ -146,16 +171,18 @@ apart on the board.
   `ssh` process lifecycle, zombie reaping, and per-request auth failure
   handling inside the bridge — the exact ownership ADR-0001 pushed out.
 - **C. Bridge owns the SSH connection (a Node SSH library, or bridge-spawned
-  `ssh` supervised as a child process)** — rejected for now. It buys real
-  ergonomics (a remote host becomes one config entry, no external unit to
-  install) but it moves credential handling into a process ADR-0003 built
-  specifically to own no credentials: the bridge would need key paths,
-  passphrase or agent-socket access, and `known_hosts` policy. A
-  compromised bridge already means shell access on every configured host;
-  giving it the keys as well widens that from "the sockets it can reach"
-  to "anything those keys open." Revisit if operator complaints about
-  tunnel upkeep outweigh that — ADR-0001 already names this as its own
-  revisit trigger.
+  `ssh` supervised as a child process)** — rejected. It moves credential
+  handling into a process ADR-0003 built specifically to own no credentials:
+  the bridge would need key paths, passphrase or agent-socket access, and
+  `known_hosts` policy. A compromised bridge already means shell access on
+  every configured host; giving it the keys as well widens that from "the
+  sockets it can reach" to "anything those keys open." The one argument for
+  C was ergonomics — a remote host as one config entry with no external unit
+  to babysit — and `kanhrd tunnel` buys that in the operator's own session
+  instead, where the credentials already are. With the ergonomics answered
+  without the credential move, C has nothing left to trade. Reopen only if
+  herdr grows a native authenticated network listener, which would change
+  what the bridge would have to hold.
 - **D. Bridge-per-host, co-located behind oauth2-proxy + tailscale
   (the user's Option B)** — rejected as the *primary* answer, and it is
   worth being precise about why, because the repo can almost do it today.
@@ -191,16 +218,19 @@ apart on the board.
   it is ADR-0001's cloud hub plus OPERATING.md §3's *reverse* tunnel, with
   `alpaca01` as the hub instead of a cloud VM. Same decision, different
   placement.
-- Remote-host support ships as docs plus one example file plus a settings
-  snippet. No `HostConfig` change, no schema change, no new bridge code
-  paths, and no new tests beyond whatever the settings snippet needs.
-- Every remote host depends on a supervisor process kanhrd does not own.
-  When it dies the host goes grey with a `last_error` and nothing else
-  breaks — the failure is per-host and already handled.
+- Remote-host support ships as the `kanhrd tunnel` command plus docs plus one
+  example file plus a settings snippet. No change to the bridge's own code
+  paths, no wire-schema change, and no credential in the bridge; `HostConfig`
+  may gain fields only the tunnel command reads.
+- Every remote host depends on a tunnel process outside the bridge. When it
+  dies the host goes grey with a `last_error` and nothing else breaks — the
+  failure is per-host and already handled. Bringing it back is
+  `kanhrd tunnel up`, which is idempotent and clears a stale socket file.
 - The three SSH failure modes (`ENOENT` no socket file, `ECONNREFUSED`
-  tunnel down, `EPIPE` wrong remote path) currently all read as a generic
-  error string. Until the optional diagnostic above is built, "why is
-  alpaca01 grey" is answered by looking at the tunnel, not the board.
+  tunnel down, `EPIPE` wrong remote path) all read as a generic error string
+  on the board. `kanhrd tunnel status` is the answer to "why is alpaca01
+  grey": it tells the three apart by connecting, not by looking for the
+  socket file. The optional bridge-side diagnostic above remains optional.
 - Anything that needs a bridge on `alpaca01` itself — a second operator, a
   board that outlives the laptop's uptime — is served by the existing
   `deploy/oauth/` and Tailscale recipes as a *second* deployment, not as a
